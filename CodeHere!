@@ -1,0 +1,79 @@
+import time
+import RPi.GPIO as io
+import MySQLdb
+import urllib
+import urllib2
+import smtplib
+import ftplib
+import os
+import datetime
+import picamera
+
+now = datetime.datetime.now()
+emailurl = 'http://capstones.ca/email.php'
+
+users = raw_input("Username: ")
+deviceName = raw_input("Device: ")
+
+
+#-----------------Email variables and sms---------------------
+emailvalues = {	'username'	: users}
+
+
+try:
+	conn=MySQLdb.connect(host="capstone1.db.9038174.hostedresource.com",user="capstone1",passwd="Password1!",db="capstone1")
+	x = conn.cursor()
+except:
+	print('SQL error')
+
+flag = True
+
+print('Checking')
+io.setmode(io.BCM)
+
+door_pin = 23
+ 
+io.setup(door_pin, io.IN, pull_up_down=io.PUD_UP)  # activate input with PullUp
+ 
+while True:
+    if io.input(door_pin):
+	if (flag == False):
+		flag = True
+        	print("DOOR OPEN!")
+		now = datetime.datetime.now()
+		i = str(now.year) + str(now.month) + str(now.day) + str(now.hour) + str(now.minute) + ".jpg"
+		conn=MySQLdb.connect(host="capstone1.db.9038174.hostedresource.com",user="capstone1",passwd="Password1!",db="capstone1")
+		x = conn.cursor()
+		x.execute('insert into logEvents (ttime, links, ddate, device) VALUES (curtime(), %s ,curdate(), %s)',(i, deviceName))
+		x.execute('update devices set doorstatus = 1 where device = %s',(deviceName))
+		conn.commit()
+		emailpostdata = urllib.urlencode(emailvalues)
+		emailreq = urllib2.Request(emailurl,emailpostdata)
+		try:
+			emailresponse = urllib2.urlopen(emailreq)
+			emailresponse_url = emailresponse.geturl()
+			if emailresponse_url == emailurl:
+				print 'SMS and Email sent'
+		except urllib2.URLError, e:
+			print e.reason
+		with picamera.PiCamera() as camera:
+			camera.resolution = (100,50)
+			camera.capture(i)
+		session = ftplib.FTP('sjconference.com','capstone','Password1!')
+		session.storlines('STOR ' + i, open(i, 'r'))
+		session.quit()
+		#os.system("raspistill -o %s" %i)
+		print("raspistill -o %s" %i)
+		time.sleep(2.0)
+	else:
+		print('Still Open!')
+    elif (flag == True):
+	conn=MySQLdb.connect(host="capstone1.db.9038174.hostedresource.com",user="capstone1",passwd="Password1!",db="capstone1")
+	x = conn.cursor()
+	x.execute('update devices set doorstatus = 0 where device = %s',(deviceName))
+	conn.commit()
+	print ("Door Closed")
+	flag = False
+    else:
+	flag = False
+    time.sleep(1.0)
